@@ -6,9 +6,13 @@ import * as ecs from "aws-cdk-lib/aws-ecs";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as lambdajs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as elasticcache from "aws-cdk-lib/aws-elasticache";
 import * as ecs_patterns from "aws-cdk-lib/aws-ecs-patterns";
 import { aws_applicationautoscaling, Duration } from 'aws-cdk-lib';
 import path = require('path');
+import { ManagedPolicy, Role, ServicePrincipal } from 'aws-cdk-lib/aws-iam';
+
+const stackName = "FargateScaleStack";
 
 export class FargateScaleStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -29,18 +33,120 @@ export class FargateScaleStack extends cdk.Stack {
       metricName: "redisQueueLength",
     });
 
+    // VPC setup for ECS and EC2
+    const vpc = new ec2.Vpc(this, `${stackName}Vpc`, {
+      maxAzs: 1,
+      cidr: "10.32.0.0/24",
+      natGateways: 1,
+      subnetConfiguration: [
+        {
+          name: `${stackName}PublicSubnet`,
+          subnetType: ec2.SubnetType.PUBLIC,
+        },
+        {
+          name: `${stackName}PrivateSubnet`,
+          subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
+        },
+      ],
+    });
+
+    // Elasticache setup
+
+    const redisSubnetGroup = new elasticcache.CfnSubnetGroup(
+      this,
+      `${stackName}redisSubnetGroup`,
+      {
+        description: "Subnet group for the redis cluster",
+        subnetIds: vpc.publicSubnets.map((ps) => ps.subnetId),
+        cacheSubnetGroupName: "GT-Redis-Subnet-Group",
+      }
+    );
+
+    const redisSecurityGroup = new ec2.SecurityGroup(
+      this,
+      `${stackName}redisSecurityGroup`,
+      {
+        vpc: vpc,
+        allowAllOutbound: true,
+        description: "Security group for the redis cluster",
+      }
+    );
+
+    // further Elasticache setup
+
+    // previous code
+    const redisCache = new elasticcache.CfnCacheCluster(
+      this,
+      `${stackName}redisCache`,
+      {
+        engine: "redis",
+        cacheNodeType: "cache.t3.micro",
+        numCacheNodes: 1,
+        clusterName: "GT-Dev-Cluster",
+        vpcSecurityGroupIds: [redisSecurityGroup.securityGroupId],
+        cacheSubnetGroupName: redisSubnetGroup.ref,
+        engineVersion: "6.2",
+        preferredMaintenanceWindow: "fri:00:30-fri:01:30",
+      }
+    );
+
+    redisCache.addDependency(redisSubnetGroup);
+
+    new cdk.CfnOutput(this, `${stackName}CacheEndpointUrl`, {
+      value: redisCache.attrRedisEndpointAddress,
+    });
+
+    new cdk.CfnOutput(this, `${stackName}CachePort`, {
+      value: redisCache.attrRedisEndpointPort,
+    });
+
+    // Lambda consumer IAM and security group
+
+    const lambdaRole = new Role(this, `${stackName}lambdaRole`, {
+      assumedBy: new ServicePrincipal("lambda.amazonaws.com"),
+    });
+
+    lambdaRole.addManagedPolicy(
+      ManagedPolicy.fromAwsManagedPolicyName("AmazonElastiCacheFullAccess")
+    );
+
+    lambdaRole.addManagedPolicy(
+      ManagedPolicy.fromAwsManagedPolicyName(
+        "service-role/AWSLambdaENIManagementAccess"
+      )
+    );
+
+    const lambdaSG = new ec2.SecurityGroup(this, `${stackName}lambdaSG`, {
+      vpc: vpc,
+      allowAllOutbound: true,
+      securityGroupName: "redis-lambdaFn Security Group",
+    });
+
+    lambdaSG.connections.allowTo(
+      redisSecurityGroup,
+      ec2.Port.tcp(6379),
+      "Allow this lambda function connect to the redis cache"
+    );
+
     // Lambda to publish Cloudwatch custom metric
     const lambdaCloudWatch = new lambdajs.NodejsFunction(
       this,
       "lambdaCloudWatch",
       {
         runtime: lambda.Runtime.NODEJS_14_X,
+        role: lambdaRole,
+        securityGroups: [lambdaSG],
+        vpc: vpc,
+        vpcSubnets: {
+          subnetType: ec2.SubnetType.PRIVATE_ISOLATED,
+        },
         memorySize: 1024,
         timeout: Duration.seconds(3),
         entry: path.join(__dirname, "../src/app.js"),
         handler: "main",
         environment: {
           Metric: metric.metricName,
+          CACHE_URL: `redis://${redisCache.attrRedisEndpointAddress}:${redisCache.attrRedisEndpointPort}`,
         },
         initialPolicy: [policyStatement],
       }
@@ -49,9 +155,9 @@ export class FargateScaleStack extends cdk.Stack {
     // Application Load Balancer (ALB) and
     // Fargate service IaC below
 
-    const vpc = new ec2.Vpc(this, "MyVpc", {
-      maxAzs: 3, // Default is all AZs in region
-    });
+    // const vpc = new ec2.Vpc(this, "MyVpc", {
+    //   maxAzs: 3, // Default is all AZs in region
+    // });
 
     const cluster = new ecs.Cluster(this, "MyCluster", {
       vpc: vpc,
@@ -66,9 +172,7 @@ export class FargateScaleStack extends cdk.Stack {
         cpu: 256, // Default is 256
         desiredCount: 2, // Default is 1
         taskImageOptions: {
-          image: ecs.ContainerImage.fromRegistry(
-            "amazon/amazon-ecs-sample"
-          ),
+          image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
         },
         memoryLimitMiB: 512, // Default is 512
         publicLoadBalancer: true, // Default is true
@@ -94,6 +198,5 @@ export class FargateScaleStack extends cdk.Stack {
       adjustmentType:
         aws_applicationautoscaling.AdjustmentType.CHANGE_IN_CAPACITY,
     });
-
   }
 }
