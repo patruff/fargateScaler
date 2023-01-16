@@ -1,6 +1,16 @@
-# Welcome to your CDK TypeScript project
+# Fargate scaling based on Redis queue size
 
-This is a blank project for CDK development with TypeScript.
+This is a project for CDK development with TypeScript.
+The aim is to scale an ECS cluster based on the queue size from
+a Redis (Elasticache) cluster.
+
+## Infrastructure
+
+Fargate behind an ALB
+Custom Cloudwatch metric to scale on (queue length)
+
+Elasticache cluster
+Lambda to access the cluster and output metric to Cloudwatch
 
 The `cdk.json` file tells the CDK Toolkit how to execute your app.
 
