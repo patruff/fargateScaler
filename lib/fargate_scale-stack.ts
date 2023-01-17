@@ -6,6 +6,8 @@ import * as ecs from "aws-cdk-lib/aws-ecs";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as lambdajs from "aws-cdk-lib/aws-lambda-nodejs";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as targets from "@aws-cdk/aws-events-targets";
+import * as events from "@aws-cdk/aws-events";
 import * as elasticcache from "aws-cdk-lib/aws-elasticache";
 import * as ecs_patterns from "aws-cdk-lib/aws-ecs-patterns";
 import { aws_applicationautoscaling, Duration } from 'aws-cdk-lib';
@@ -29,8 +31,8 @@ export class FargateScaleStack extends cdk.Stack {
 
     // Cloudwatch custom metric for Redis queue length
     const metric = new cloudwatch.Metric({
-      namespace: "redisQueueLengthNamespace",
-      metricName: "redisQueueLength",
+      namespace: "redisQueueSizeNamespace",
+      metricName: "redisQueueSize",
     });
 
     // VPC setup for ECS and EC2
@@ -116,6 +118,18 @@ export class FargateScaleStack extends cdk.Stack {
       )
     );
 
+    lambdaRole.addManagedPolicy(
+      ManagedPolicy.fromAwsManagedPolicyName(
+        "service-role/AWSLambdaBasicExecutionRole"
+      )
+    );
+
+    lambdaRole.addManagedPolicy(
+      ManagedPolicy.fromAwsManagedPolicyName(
+        "service-role/AWSLambdaVPCAccessExecutionRole"
+      )
+    );
+
     const lambdaSG = new ec2.SecurityGroup(this, `${stackName}lambdaSG`, {
       vpc: vpc,
       allowAllOutbound: true,
@@ -127,6 +141,17 @@ export class FargateScaleStack extends cdk.Stack {
       ec2.Port.tcp(6379),
       "Allow this lambda function connect to the redis cache"
     );
+
+    lambdaSG.addIngressRule(
+      ec2.Peer.ipv4(vpc.vpcCidrBlock),
+      ec2.Port.allTcp(),
+      "Allow all TCP within VPC"
+    );
+
+    // Add an interface endpoint
+    vpc.addInterfaceEndpoint("CloudwatchFromLambdaEndpoint", {
+      service: ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_MONITORING,
+    });
 
     // Lambda to publish Cloudwatch custom metric
     const lambdaCloudWatch = new lambdajs.NodejsFunction(
@@ -152,15 +177,21 @@ export class FargateScaleStack extends cdk.Stack {
       }
     );
 
+    // Event Rule to trigger the Lambda every minute
+    // const eventRule = new events.Rule(this, "scheduleRule", {
+    //   schedule: events.Schedule.cron({ minute: "1", hour: "0" }),
+    // });
+    // eventRule.addTarget(new targets.LambdaFunction(lambdaCloudWatch));
+
     // Application Load Balancer (ALB) and
     // Fargate service IaC below
 
-    // const vpc = new ec2.Vpc(this, "MyVpc", {
-    //   maxAzs: 3, // Default is all AZs in region
-    // });
+    const vpc2 = new ec2.Vpc(this, "MyVpc", {
+       maxAzs: 3, // Default is all AZs in region
+     });
 
     const cluster = new ecs.Cluster(this, "MyCluster", {
-      vpc: vpc,
+      vpc: vpc2,
     });
 
     // Create a load-balanced Fargate service and make it public
@@ -170,7 +201,7 @@ export class FargateScaleStack extends cdk.Stack {
       {
         cluster: cluster, // Required
         cpu: 256, // Default is 256
-        desiredCount: 2, // Default is 1
+        desiredCount: 1, // Default is 1
         taskImageOptions: {
           image: ecs.ContainerImage.fromRegistry("amazon/amazon-ecs-sample"),
         },
@@ -185,11 +216,13 @@ export class FargateScaleStack extends cdk.Stack {
     });
 
     // get metric here
-    const cpuUtilization = service.service.metricCpuUtilization();
+    // const cpuUtilization = service.service.metricCpuUtilization();
 
     // scale based on metric
-    scaling.scaleOnMetric("autoscale_cpu", {
-      metric: cpuUtilization,
+    // if metric is below 10 scale in
+    // if metric is above 50 scale out
+    scaling.scaleOnMetric("autoscale_queuesize", {
+      metric: metric,
       scalingSteps: [
         { upper: 10, change: -1 },
         { lower: 50, change: +1 },
