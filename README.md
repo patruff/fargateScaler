@@ -13,7 +13,10 @@ a Redis (Elasticache) cluster.
 ## Setting the Lambda
 
 Right now the lambda that can GET/SET values in Elasticache (and then after GET it will set the Cloudwatch metric)
-Can be kicked off with test events of the format
+Can be kicked off with test events of the format below. Basically, the SET can set the value of anything. The GET will
+grab "value" from Elasticache for the given key and then the string value is set to an integer and used to update
+the Cloudwatch metric (this is what scales the ECS tasks).
+
 ### For SET
 {
   "params":{
