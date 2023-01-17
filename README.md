@@ -12,11 +12,11 @@ a Redis (Elasticache) cluster.
 
 ## Infrastructure (not exhaustive)
 
-Fargate behind an ALB (in 3 different availability zones)
-Elasticache on EC2 (in one specific availability zone)
-Custom Cloudwatch metric to scale on (queue size)
-Lambda to access the Elasticache cluster and output the custom metric to Cloudwatch
-Interface endpoint that allows the Lambda (in private subnet) to reach out to Cloudwatch
+* Fargate behind an ALB (in 3 different availability zones)
+* Elasticache on EC2 (in one specific availability zone)
+* Custom Cloudwatch metric to scale on (queue size)
+* Lambda to access the Elasticache cluster and output the custom metric to Cloudwatch
+* Interface endpoint that allows the Lambda (in private subnet) to reach out to Cloudwatch
 
 ## Useful commands
 
