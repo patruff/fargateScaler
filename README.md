@@ -4,21 +4,24 @@ This is a project for CDK development with TypeScript.
 The aim is to scale an ECS cluster based on the queue size from
 a Redis (Elasticache) cluster.
 
-## Infrastructure
+## Running the IaC
 
-Fargate behind an ALB
-Custom Cloudwatch metric to scale on (queue length)
+* Clone the repo
+* Install packages (npm install)
+* Update the bin/fargate_scale.ts file with your AWS account and region
 
-Elasticache cluster
-Lambda to access the cluster and output metric to Cloudwatch
+## Infrastructure (not exhaustive)
 
-The `cdk.json` file tells the CDK Toolkit how to execute your app.
+Fargate behind an ALB (in 3 different availability zones)
+Elasticache on EC2 (in one specific availability zone)
+Custom Cloudwatch metric to scale on (queue size)
+Lambda to access the Elasticache cluster and output the custom metric to Cloudwatch
+Interface endpoint that allows the Lambda (in private subnet) to reach out to Cloudwatch
 
 ## Useful commands
 
-* `npm run build`   compile typescript to js
-* `npm run watch`   watch for changes and compile
-* `npm run test`    perform the jest unit tests
-* `cdk deploy`      deploy this stack to your default AWS account/region
-* `cdk diff`        compare deployed stack with current state
-* `cdk synth`       emits the synthesized CloudFormation template
+* `git clone`   clone this repo
+* `npm install`   install all of the packages needed
+* `npx aws-cdk deploy`      deploy this stack to your default AWS account/region
+* `npx aws-cdk diff`        compare deployed stack with current state
+* `npx aws-cdk synth`       emits the synthesized CloudFormation template
