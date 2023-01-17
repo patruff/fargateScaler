@@ -10,6 +10,27 @@ a Redis (Elasticache) cluster.
 * Install packages (npm install)
 * Update the bin/fargate_scale.ts file with your AWS account and region
 
+## Setting the Lambda
+
+Right now the lambda that can GET/SET values in Elasticache (and then after GET it will set the Cloudwatch metric)
+Can be kicked off with test events of the format
+### For SET
+{
+  "params":{
+      "key": "queuename",
+      "value": "10000",
+      "type": "set"
+  }
+}
+
+### For GET
+{
+  "params":{
+      "key": "queuename",
+      "type": "get"
+  }
+}
+
 ## Infrastructure (not exhaustive)
 
 * Fargate behind an ALB (in 3 different availability zones)
