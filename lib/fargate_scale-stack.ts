@@ -142,12 +142,6 @@ export class FargateScaleStack extends cdk.Stack {
       "Allow this lambda function connect to the redis cache"
     );
 
-    lambdaSG.addIngressRule(
-      ec2.Peer.ipv4(vpc.vpcCidrBlock),
-      ec2.Port.allTcp(),
-      "Allow all TCP within VPC"
-    );
-
     // Add an interface endpoint
     vpc.addInterfaceEndpoint("CloudwatchFromLambdaEndpoint", {
       service: ec2.InterfaceVpcEndpointAwsService.CLOUDWATCH_MONITORING,
