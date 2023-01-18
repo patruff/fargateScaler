@@ -72,18 +72,14 @@ export async function main(event, context) {
             MetricData: [],
             Namespace: 'redisQueueSizeNamespace'
         }
-
+          
         metricParams.MetricData.push({
-            'MetricName': 'redisQueueSize',
-            'Dimensions': [
-                { 'Name': 'APP_VERSION', 'Value': '1.0' },
-                {
-                    'Name': 'DESCRIPTION',
-                    'Value': 'Fargate Scaling Metric'
-                },
-            ],
-            'Unit': 'Count',
-            'Value': Number(value)
+          "MetricName": "redisQueueSize",
+          "Dimensions": [
+            { "Name": "redisQueueSize", "Value": "The length of the queue" },
+          ],
+          "Unit": "Count",
+          "Value": Number(value)
         });
 
         // so what we need is to make a new object for pushing metrics
