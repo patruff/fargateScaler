@@ -209,19 +209,20 @@ export class FargateScaleStack extends cdk.Stack {
       minCapacity: 1,
     });
 
-    // get metric here
-    // const cpuUtilization = service.service.metricCpuUtilization();
-
     // scale based on metric
     // if metric is below 10 scale in
     // if metric is above 50 scale out
     scaling.scaleOnMetric("autoscale_queuesize", {
       metric: metric,
+      evaluationPeriods: 1,
+      datapointsToAlarm: 1,
       scalingSteps: [
         { upper: 10, change: -1 },
         { lower: 50, change: +1 },
         { lower: 70, change: +3 },
       ],
+      metricAggregationType:
+        aws_applicationautoscaling.MetricAggregationType.MAXIMUM,
       adjustmentType:
         aws_applicationautoscaling.AdjustmentType.CHANGE_IN_CAPACITY,
     });
